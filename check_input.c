@@ -13,133 +13,95 @@
 #include "fillit.h"
 #include <stdio.h>
 
-int		bit_add(int j)
+int				check_conn(char **ret, int i, int j, int *count_sharp)
 {
-	if (j == 0)
-		return (8);
-	if (j == 1)
-		return (4);
-	if (j == 2)
-		return (2);
-	if (j == 3)
-		return (1);
-	return (0);
-}
+	int count;
 
-void	fill_row(int *row, int c, int size)
-{
-	int	i;
-
-	i = 0;
-	while (i < size)
-		row[i++] = c;
-}
-
-int		check_row(int *row)
-{
-	int		i;
-	int		sum;
-
-	i = 0;
-	sum = 0;
-	while (i < 4)
-		sum += row[i++];
-	i = 0;
-	while (i < 3)
-	{
-		sum -= row[i];
-		if (row[i] && ((sum  && !row[i + 1]) || (!(row[i] & row[i + 1]) && row[i + 1])))
-			return (0);
-		i++;
-	}
-	return (1);
-}
-
-int		check_input(char **ret, int index, t_square *tetriminos, char ch)
-{
-	int i;
-	int	j;
-	int len;
-	int	count;
-
-	if (((index - (index / 4 - 1))  % 4) != 0)
-		return (0);
-	i = index - 5;
 	count = 0;
-	tetriminos->row = (int *)malloc(sizeof(int) * 4);                                                                     
-	fill_row(tetriminos->row, 0, 4);
-	//printf("begin i = %d\nindex = %i\n", i, index);
-	while (++i < index)
+	(*count_sharp)++;
+	if (i > 0 && ret[i - 1][j] == '#')
+		count++;
+	if (i < 3 && ret[i + 1][j] == '#')
+		count++;
+	if (j > 0 && ret[i][j - 1] == '#')
+		count++;
+	if (j < 3 && ret[i][j + 1] == '#')
+		count++;
+	return (count);
+}
+
+void			set_parameters(int *i, int *conn, int *count,\
+											t_coordinates **tmp_coord)
+{
+	*i = -1;
+	*conn = 0;
+	*count = 0;
+	*tmp_coord = NULL;
+}
+
+int				check_input(char **ret, char ch, t_coordinates **coords)
+{
+	int				i;
+	int				j;
+	int				count;
+	int				conn;
+	t_coordinates	*tmp_coord;
+
+	set_parameters(&i, &conn, &count, &tmp_coord);
+	while (++i < 4)
 	{
 		j = -1;
-		len = ft_strlen(ret[i]);
-		//printf("i = %i\n", i - (5 * (index/4 - 1)));
-		while (++j < len)
+		while (++j < 4)
 		{
-			if (ret[i][j] != '.' && ret[i][j] != '#')
+			if ((ret[i][j] != '.' && ret[i][j] != '#'))
 				return (0);
 			if (ret[i][j] == '#')
 			{
-				ret[i][j] = ch;
-				tetriminos->row[i - (5 * (index/4 - 1))] += bit_add(j);
-				count++;
+				if (count == 4)
+					return (0);
+				tmp_coord = add_coords(tmp_coord, count, j, i);
+				conn += check_conn(ret, i, j, &count);
 			}
 		}
 	}
-	tetriminos->fill_c = ch;
-	tetriminos->size = 4;
-	//printf("end i = %i\n", i);
-	return (count == 4 && check_row(tetriminos->row));
+	add_to_end(coords, tmp_coord);
+	return (count == 4 && (conn == 6 || conn == 8));
 }
 
-void	print_square(t_square *tetriminos, int count)
+int				check_file(char *filename, int *fd, int *i, int *last)
 {
-	int		i;
-	int		len;
-
-	i = 0;
-	while(i < count)
-	{
-		printf("char = %c size = %i\n", tetriminos[i].fill_c, tetriminos[i].size);
-		len = 0;
-		while (len < 4)
-		{
-			printf("%i  ", tetriminos[i].row[len]);
-			len++;
-		}
-		printf("\n");
-		i++;
-	}
+	*i = -1;
+	*last = 1;
+	if ((*fd = open(filename, O_RDONLY)) == -1)
+		return (-1);
+	return (*fd);
 }
 
-t_square	*save_input(char *filename, t_square *tetriminos)
+t_coordinates	*save_input(char *filename, t_coordinates *coords,\
+											t_coordinates *begin, char **ret)
 {
-	int		i;
-	int		fd;
-	int		len;
-	char	**ret;
+	int				i;
+	int				fd;
+	int				len;
+	int				last;
 
-	if ((fd = open(filename, O_RDONLY)) == -1)
-		return (NULL);
-	i = -1;
-	ret = (char **)malloc(sizeof(char *) * 100);
-	tetriminos = (t_square *)malloc(sizeof(t_square)*25);
-	while (get_next_line(fd, &ret[++i]))
+	fd = check_file(filename, &fd, &i, &last);
+	while (get_next_line(fd, &ret[++i]) || last--)
 	{
 		len = ft_strlen(ret[i]);
-		if (len == 0)
+		if (i == 4 && len == 0)
 		{
-			//printf("i = %i\n", i/4 -1);
-			if (!(check_input(ret, i, &tetriminos[i/4 -1], 'A' + i /4 - 1)))
+			if (!(check_input(ret, 'A' + g_size, &coords)))
 				return (NULL);
+			if (!g_size)
+				begin = coords;
+			g_size++;
+			i = -1;
 		}
 		else if (len < 4 || len > 4)
-			return (NULL);
+			return (0);
 	}
-	print_square(tetriminos, i/4 -1);
-	ret[i] = NULL;
-	while (*ret)
-		printf("%s\n", *ret++);
-	g_size = i / 4 - 1;
-	return (tetriminos);
+	ret[5] = NULL;
+	free_space((void **)ret);
+	return (begin);
 }
